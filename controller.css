@@ -1,0 +1,18 @@
+.controller.custom {
+    width: 1000px;
+    height: 667px;
+    background: url("controller_normal.png") no-repeat 0 0;
+    background-size: 1000px 667px;
+    position: relative;
+}
+
+.controller.custom .button,
+.controller.custom .dpad,
+.controller.custom .stick,
+.controller.custom .trigger,
+.controller.custom .bumper,
+.controller.custom .touchpad {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
