@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PS5 Controller Overlay</title>
+
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+}
+
+#controller {
+    width: 1000px;
+    height: 667px;
+    background-image: url("controller_normal.png");
+    background-size: 1000px 667px;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+</style>
+</head>
+
+<body>
+
+<div id="controller"></div>
+
+<script>
+const controller = document.getElementById("controller");
+
+const images = {
+    normal: "controller_normal.png",
+    x: "controller_x_pressed.png",
+    o: "controller_o_pressed.png",
+    square: "controller_square_pressed.png",
+    triangle: "controller_triangle_pressed.png",
+    L1: "controller_L1_pressed.png",
+    R1: "controller_R1_pressed.png",
+    LeftAnalog: "controller_LeftAnalog_pressed.png",
+    RightAnalog: "controller_RightAnalog_pressed.png",
+    dpadup: "controller_dpadup_pressed.png",
+    dpaddown: "controller_dpaddown_pressed.png",
+    dpadleft: "controller_dpadleft_pressed.png",
+    dpadright: "controller_dpadright_pressed.png",
+    touchpad: "controller_touchpad_pressed.png"
+};
+
+let loadedImages = {};
+
+for (const key in images) {
+    const img = new Image();
+    img.src = images[key];
+    loadedImages[key] = img;
+}
+
+function setController(image) {
+    controller.style.backgroundImage =
+        `url("${images[image]}")`;
+}
+
+function checkGamepad() {
+
+    const gamepads = navigator.getGamepads();
+
+    let gamepad = null;
+
+    for (const g of gamepads) {
+        if (g) {
+            gamepad = g;
+            break;
+        }
+    }
+
+    if (!gamepad) {
+        setController("normal");
+        requestAnimationFrame(checkGamepad);
+        return;
+    }
+
+    let pressed = "normal";
+
+    if (gamepad.buttons[0]?.pressed) {
+        pressed = "x";
+    }
+    else if (gamepad.buttons[1]?.pressed) {
+        pressed = "o";
+    }
+    else if (gamepad.buttons[2]?.pressed) {
+        pressed = "square";
+    }
+    else if (gamepad.buttons[3]?.pressed) {
+        pressed = "triangle";
+    }
+    else if (gamepad.buttons[4]?.pressed) {
+        pressed = "L1";
+    }
+    else if (gamepad.buttons[5]?.pressed) {
+        pressed = "R1";
+    }
+    else if (gamepad.buttons[10]?.pressed) {
+        pressed = "LeftAnalog";
+    }
+    else if (gamepad.buttons[11]?.pressed) {
+        pressed = "RightAnalog";
+    }
+    else if (gamepad.buttons[12]?.pressed) {
+        pressed = "dpadup";
+    }
+    else if (gamepad.buttons[13]?.pressed) {
+        pressed = "dpaddown";
+    }
+    else if (gamepad.buttons[14]?.pressed) {
+        pressed = "dpadleft";
+    }
+    else if (gamepad.buttons[15]?.pressed) {
+        pressed = "dpadright";
+    }
+    else if (gamepad.buttons[9]?.pressed) {
+        pressed = "touchpad";
+    }
+
+    setController(pressed);
+
+    requestAnimationFrame(checkGamepad);
+}
+
+window.addEventListener("gamepadconnected", checkGamepad);
+
+checkGamepad();
+</script>
+
+</body>
+</html>
