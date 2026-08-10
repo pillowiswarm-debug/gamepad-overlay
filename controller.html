@@ -44,39 +44,38 @@ const HEIGHT = 667;
 
 
 /* =====================================================
-   JOYSTICK SETTINGS
+   SETTINGS
 ===================================================== */
 
 /*
-   Maximum visual movement of each joystick.
+   How far the visual stick moves.
 
-   Lower = less movement
-   Higher = more movement
-
-   Start with 35 because your previous version
-   was moving slightly too far.
+   Your Gamepad API gives us -1 to +1.
+   50 pixels means full stick = 50 pixels.
 */
 
-const STICK_RANGE = 35;
+const STICK_RANGE = 50;
 
 
 /*
-   Ignore tiny controller stick drift.
+   Ignore tiny controller drift.
 */
 
-const DEADZONE = 0.08;
+const DEADZONE = 0.10;
 
 
 /*
-   How different a pixel must be between the
-   normal and pressed images to count as changed.
+   Pixel difference threshold.
+
+   We use this to separate the joystick
+   from the normal controller.
 */
 
 const DIFFERENCE_THRESHOLD = 25;
 
 
 /* =====================================================
-   BUTTON FILES
+   BUTTONS
 ===================================================== */
 
 const files = {
@@ -97,10 +96,6 @@ const files = {
     touchpad: "controller_touchpad_pressed.png"
 };
 
-
-/* =====================================================
-   BUTTON MAP
-===================================================== */
 
 const buttonMap = {
 
@@ -139,7 +134,6 @@ let overlays = {};
 let gamepad = null;
 
 let leftStick = null;
-
 let rightStick = null;
 
 
@@ -171,7 +165,7 @@ function loadImage(src) {
    GET IMAGE DATA
 ===================================================== */
 
-function getImageData(img) {
+function imageData(img) {
 
     const c =
         document.createElement("canvas");
@@ -200,12 +194,12 @@ function getImageData(img) {
 
 
 /* =====================================================
-   BUTTON DIFFERENCE OVERLAY
+   BUTTON OVERLAY
 ===================================================== */
 
-function createButtonOverlay(
-    normalData,
-    pressedData
+function makeButtonOverlay(
+    normal,
+    pressed
 ) {
 
     const c =
@@ -223,67 +217,52 @@ function createButtonOverlay(
             HEIGHT
         );
 
-    const normal =
-        normalData.data;
+    const n =
+        normal.data;
 
-    const pressed =
-        pressedData.data;
+    const p =
+        pressed.data;
 
-    const result =
+    const o =
         output.data;
 
 
     for (
         let i = 0;
-        i < normal.length;
+        i < n.length;
         i += 4
     ) {
 
         const difference =
-            Math.abs(
-                normal[i] -
-                pressed[i]
-            ) +
-
-            Math.abs(
-                normal[i + 1] -
-                pressed[i + 1]
-            ) +
-
-            Math.abs(
-                normal[i + 2] -
-                pressed[i + 2]
-            ) +
-
-            Math.abs(
-                normal[i + 3] -
-                pressed[i + 3]
-            );
+            Math.abs(n[i] - p[i]) +
+            Math.abs(n[i + 1] - p[i + 1]) +
+            Math.abs(n[i + 2] - p[i + 2]) +
+            Math.abs(n[i + 3] - p[i + 3]);
 
 
         if (
             difference >
-            12
+            DIFFERENCE_THRESHOLD
         ) {
 
-            result[i] =
-                pressed[i];
+            o[i] =
+                p[i];
 
-            result[i + 1] =
-                pressed[i + 1];
+            o[i + 1] =
+                p[i + 1];
 
-            result[i + 2] =
-                pressed[i + 2];
+            o[i + 2] =
+                p[i + 2];
 
-            result[i + 3] =
-                pressed[i + 3];
+            o[i + 3] =
+                p[i + 3];
 
         } else {
 
-            result[i] = 0;
-            result[i + 1] = 0;
-            result[i + 2] = 0;
-            result[i + 3] = 0;
+            o[i] = 0;
+            o[i + 1] = 0;
+            o[i + 2] = 0;
+            o[i + 3] = 0;
         }
     }
 
@@ -300,22 +279,22 @@ function createButtonOverlay(
 
 
 /* =====================================================
-   FIND STICK PIXELS
+   FIND CHANGED PIXELS
 ===================================================== */
 
-function findStickPixels(
-    normalData,
-    pressedData
+function findChangedPixels(
+    normal,
+    pressed
 ) {
 
-    const normal =
-        normalData.data;
+    const n =
+        normal.data;
 
-    const pressed =
-        pressedData.data;
+    const p =
+        pressed.data;
 
 
-    const pixels = [];
+    const changed = [];
 
 
     for (
@@ -335,25 +314,10 @@ function findStickPixels(
 
 
             const difference =
-                Math.abs(
-                    normal[i] -
-                    pressed[i]
-                ) +
-
-                Math.abs(
-                    normal[i + 1] -
-                    pressed[i + 1]
-                ) +
-
-                Math.abs(
-                    normal[i + 2] -
-                    pressed[i + 2]
-                ) +
-
-                Math.abs(
-                    normal[i + 3] -
-                    pressed[i + 3]
-                );
+                Math.abs(n[i] - p[i]) +
+                Math.abs(n[i + 1] - p[i + 1]) +
+                Math.abs(n[i + 2] - p[i + 2]) +
+                Math.abs(n[i + 3] - p[i + 3]);
 
 
             if (
@@ -361,58 +325,51 @@ function findStickPixels(
                 DIFFERENCE_THRESHOLD
             ) {
 
-                pixels.push({
-                    x: x,
-                    y: y,
-                    index: i
+                changed.push({
+                    x,
+                    y,
+                    i
                 });
             }
         }
     }
 
 
-    return pixels;
+    return changed;
 }
 
 
 /* =====================================================
-   CREATE STICK SPRITE
+   BUILD STICK
 ===================================================== */
 
-function createStickSprite(
-    normalData,
-    pressedData,
+function buildStick(
+    normal,
+    pressed,
     name
 ) {
 
-    const normal =
-        normalData.data;
-
-    const pressed =
-        pressedData.data;
-
-
-    const pixels =
-        findStickPixels(
-            normalData,
-            pressedData
+    const changed =
+        findChangedPixels(
+            normal,
+            pressed
         );
 
 
     console.log(
         name +
         " changed pixels:",
-        pixels.length
+        changed.length
     );
 
 
     if (
-        pixels.length === 0
+        changed.length === 0
     ) {
 
         console.error(
             name +
-            " could not be detected."
+            " had no detectable changes."
         );
 
         return null;
@@ -420,8 +377,7 @@ function createStickSprite(
 
 
     /*
-       Find the original location
-       of the joystick.
+       Find the bounding box.
     */
 
     let minX = WIDTH;
@@ -432,7 +388,7 @@ function createStickSprite(
 
 
     for (
-        const pixel of pixels
+        const pixel of changed
     ) {
 
         minX =
@@ -461,36 +417,29 @@ function createStickSprite(
     }
 
 
-    const centerX =
-        (minX + maxX) / 2;
-
-    const centerY =
-        (minY + maxY) / 2;
-
-
-    console.log(
-        name +
-        " original center:",
-        centerX,
-        centerY
-    );
-
-
     console.log(
         name +
         " bounds:",
-        minX,
-        minY,
-        maxX,
-        maxY
+        {
+            minX,
+            minY,
+            maxX,
+            maxY
+        }
     );
 
 
     /*
-       Full-size transparent sprite.
+       Create a transparent FULL-SIZE sprite.
 
-       The joystick remains at its original
-       controller coordinates.
+       This is important.
+
+       The canvas stays 1000×667,
+       but everything except the changed
+       pixels is transparent.
+
+       Therefore moving it moves ONLY
+       the joystick pixels.
     */
 
     const sprite =
@@ -513,33 +462,32 @@ function createStickSprite(
             HEIGHT
         );
 
-    const result =
+    const out =
         output.data;
 
+    const p =
+        pressed.data;
 
-    /*
-       Copy ONLY the joystick pixels.
-    */
 
     for (
-        const pixel of pixels
+        const pixel of changed
     ) {
 
         const i =
-            pixel.index;
+            pixel.i;
 
 
-        result[i] =
-            pressed[i];
+        out[i] =
+            p[i];
 
-        result[i + 1] =
-            pressed[i + 1];
+        out[i + 1] =
+            p[i + 1];
 
-        result[i + 2] =
-            pressed[i + 2];
+        out[i + 2] =
+            p[i + 2];
 
-        result[i + 3] =
-            pressed[i + 3];
+        out[i + 3] =
+            p[i + 3];
     }
 
 
@@ -554,18 +502,30 @@ function createStickSprite(
 
         image: sprite,
 
-        centerX: centerX,
+        /*
+           The original location of the
+           joystick's center.
+        */
 
-        centerY: centerY
+        centerX:
+            (minX + maxX) / 2,
+
+        centerY:
+            (minY + maxY) / 2,
+
+        minX,
+        minY,
+        maxX,
+        maxY
     };
 }
 
 
 /* =====================================================
-   DEADZONE
+   NORMALIZE AXIS
 ===================================================== */
 
-function normalizeAxis(value) {
+function axis(value) {
 
     if (
         Math.abs(value) <
@@ -582,7 +542,7 @@ function normalizeAxis(value) {
             : 1;
 
 
-    const amount =
+    const magnitude =
         (
             Math.abs(value) -
             DEADZONE
@@ -594,79 +554,49 @@ function normalizeAxis(value) {
     return (
         sign *
         Math.min(
-            amount,
-            1
+            1,
+            magnitude
         )
     );
 }
 
 
 /* =====================================================
-   DRAW MOVING STICK
+   DRAW STICK
 ===================================================== */
 
 function drawStick(
     stick,
-    axisX,
-    axisY
+    xAxis,
+    yAxis
 ) {
 
     if (!stick)
         return;
 
 
-    const normalizedX =
-        normalizeAxis(
-            axisX
-        );
-
-    const normalizedY =
-        normalizeAxis(
-            axisY
-        );
-
-
-    const moveX =
-        normalizedX *
+    const x =
+        axis(xAxis) *
         STICK_RANGE;
 
-
-    const moveY =
-        normalizedY *
+    const y =
+        axis(yAxis) *
         STICK_RANGE;
 
 
     /*
-       IMPORTANT:
+       We want:
 
-       The stick sprite is already positioned
-       at its ORIGINAL location inside the
-       1000x667 transparent canvas.
-
-       We translate that whole transparent
-       canvas by the analog movement.
-
-       Only the joystick pixels are visible,
-       so only the joystick appears to move.
+       normal stick position
+       +
+       controller movement
     */
-
-    ctx.save();
-
-
-    ctx.translate(
-        moveX,
-        moveY
-    );
-
 
     ctx.drawImage(
         stick.image,
-        0,
-        0
+        x,
+        y
     );
-
-
-    ctx.restore();
 }
 
 
@@ -711,13 +641,13 @@ function findGamepad() {
 
 
 /* =====================================================
-   UPDATE CONTROLLER
+   UPDATE
 ===================================================== */
 
-function updateController() {
+function update() {
 
     /*
-       Draw the normal controller first.
+       NORMAL CONTROLLER
     */
 
     ctx.clearRect(
@@ -744,9 +674,9 @@ function updateController() {
     if (pad) {
 
 
-        /* =============================================
+        /*
            BUTTONS
-        ============================================= */
+        */
 
         for (
             const index in buttonMap
@@ -763,65 +693,54 @@ function updateController() {
                 continue;
 
 
-            const name =
-                buttonMap[index];
-
-
             const overlay =
-                overlays[name];
+                overlays[
+                    buttonMap[index]
+                ];
 
 
-            if (!overlay)
-                continue;
+            if (overlay) {
 
-
-            ctx.drawImage(
-                overlay,
-                0,
-                0
-            );
+                ctx.drawImage(
+                    overlay,
+                    0,
+                    0
+                );
+            }
         }
 
 
-        /* =============================================
-           LEFT ANALOG
-        ============================================= */
+        /*
+           LEFT STICK
+        */
 
         drawStick(
             leftStick,
-
-            pad.axes[0] ||
-            0,
-
-            pad.axes[1] ||
-            0
+            pad.axes[0] || 0,
+            pad.axes[1] || 0
         );
 
 
-        /* =============================================
-           RIGHT ANALOG
-        ============================================= */
+        /*
+           RIGHT STICK
+        */
 
         drawStick(
             rightStick,
-
-            pad.axes[2] ||
-            0,
-
-            pad.axes[3] ||
-            0
+            pad.axes[2] || 0,
+            pad.axes[3] || 0
         );
     }
 
 
     requestAnimationFrame(
-        updateController
+        update
     );
 }
 
 
 /* =====================================================
-   GAMEPAD CONNECTED
+   GAMEPAD EVENTS
 ===================================================== */
 
 window.addEventListener(
@@ -831,7 +750,6 @@ window.addEventListener(
         gamepad =
             event.gamepad;
 
-
         console.log(
             "Gamepad connected:",
             gamepad.id
@@ -839,10 +757,6 @@ window.addEventListener(
     }
 );
 
-
-/* =====================================================
-   GAMEPAD DISCONNECTED
-===================================================== */
 
 window.addEventListener(
     "gamepaddisconnected",
@@ -869,13 +783,13 @@ async function start() {
     try {
 
         console.log(
-            "Loading PS5 controller..."
+            "Loading controller..."
         );
 
 
-        /* =============================================
-           NORMAL CONTROLLER
-        ============================================= */
+        /*
+           Normal controller.
+        */
 
         normalImage =
             await loadImage(
@@ -884,81 +798,78 @@ async function start() {
 
 
         const normalData =
-            getImageData(
+            imageData(
                 normalImage
             );
 
 
-        /* =============================================
-           BUTTON OVERLAYS
-        ============================================= */
+        /*
+           Buttons.
+        */
 
         for (
             const name in files
         ) {
 
-            const pressedImage =
+            const pressed =
                 await loadImage(
                     files[name]
                 );
 
-
             const pressedData =
-                getImageData(
-                    pressedImage
+                imageData(
+                    pressed
                 );
 
 
             overlays[name] =
-                createButtonOverlay(
+                makeButtonOverlay(
                     normalData,
                     pressedData
                 );
         }
 
 
-        /* =============================================
-           LEFT STICK
-        ============================================= */
+        /*
+           Left joystick.
+        */
 
         const leftImage =
             await loadImage(
                 "controller_LeftAnalog_pressed.png"
             );
 
-
         const leftData =
-            getImageData(
+            imageData(
                 leftImage
             );
 
 
         leftStick =
-            createStickSprite(
+            buildStick(
                 normalData,
                 leftData,
                 "LEFT STICK"
             );
 
 
-        /* =============================================
-           RIGHT STICK
-        ============================================= */
+        /*
+           Right joystick.
+        */
 
         const rightImage =
             await loadImage(
                 "controller_RightAnalog_pressed.png"
             );
 
-
         const rightData =
-            getImageData(
+            imageData(
                 rightImage
             );
 
 
         rightStick =
-            createStickSprite(
+            buildStick(
                 normalData,
                 rightData,
                 "RIGHT STICK"
@@ -970,7 +881,7 @@ async function start() {
         );
 
         console.log(
-            "PS5 CONTROLLER READY"
+            "CONTROLLER READY"
         );
 
         console.log(
@@ -989,7 +900,7 @@ async function start() {
 
 
         requestAnimationFrame(
-            updateController
+            update
         );
 
 
