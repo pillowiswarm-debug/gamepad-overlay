@@ -42,54 +42,36 @@ canvas {
 const WIDTH = 1000;
 const HEIGHT = 667;
 
-
-/* =====================================================
-   BUTTON FILES
-===================================================== */
+const MAX_MOVE = 50;
+const DEADZONE = 0.08;
 
 const files = {
     x: "controller_x_pressed.png",
     o: "controller_o_pressed.png",
     square: "controller_square_pressed.png",
     triangle: "controller_triangle_pressed.png",
-
     L1: "controller_L1_pressed.png",
     R1: "controller_R1_pressed.png",
-
     dpadup: "controller_dpadup_pressed.png",
     dpaddown: "controller_dpaddown_pressed.png",
     dpadleft: "controller_dpadleft_pressed.png",
     dpadright: "controller_dpadright_pressed.png",
-
     touchpad: "controller_touchpad_pressed.png"
 };
-
-
-/* =====================================================
-   STANDARD GAMEPAD BUTTON MAP
-===================================================== */
 
 const buttonMap = {
     0: "x",
     1: "o",
     2: "square",
     3: "triangle",
-
     4: "L1",
     5: "R1",
-
     12: "dpadup",
     13: "dpaddown",
     14: "dpadleft",
     15: "dpadright",
-
     9: "touchpad"
 };
-
-
-/* =====================================================
-   CANVAS
-===================================================== */
 
 const canvas =
     document.getElementById("base");
@@ -97,50 +79,12 @@ const canvas =
 const ctx =
     canvas.getContext("2d");
 
-
-/* =====================================================
-   VARIABLES
-===================================================== */
-
 let normalImage = null;
-
 let overlays = {};
-
 let gamepad = null;
 
-
-/*
-    THIS controls how far the sticks move.
-
-    50 = maximum movement.
-    If it's too much later, lower this to 40 or 35.
-*/
-
-const MAX_MOVE = 50;
-
-
-/* =====================================================
-   STICK POSITIONS
-
-   CHANGE THESE ONLY IF THE STICKS ARE NOT CENTERED.
-
-   These are approximate starting positions for a
-   1000 x 667 controller image.
-
-   We will adjust them after testing.
-===================================================== */
-
-/*
-   IMPORTANT:
-   These coordinates represent the TOP-LEFT corner
-   of the joystick image.
-*/
-
-const LEFT_STICK_X = 215;
-const LEFT_STICK_Y = 390;
-
-const RIGHT_STICK_X = 555;
-const RIGHT_STICK_Y = 390;
+let leftStick = null;
+let rightStick = null;
 
 
 /* =====================================================
@@ -151,14 +95,12 @@ function loadImage(src) {
 
     return new Promise((resolve, reject) => {
 
-        const img =
-            new Image();
+        const img = new Image();
 
-        img.onload =
-            () => resolve(img);
+        img.onload = () => resolve(img);
 
-        img.onerror =
-            () => reject(
+        img.onerror = () =>
+            reject(
                 new Error(
                     "Could not load " + src
                 )
@@ -170,28 +112,25 @@ function loadImage(src) {
 
 
 /* =====================================================
-   BUTTON DIFFERENCE OVERLAY
+   MAKE BUTTON OVERLAY
 ===================================================== */
 
-function createDifferenceOverlay(
+function makeOverlay(
     normalData,
     pressedData
 ) {
 
-    const overlay =
+    const resultCanvas =
         document.createElement("canvas");
 
-    overlay.width =
-        WIDTH;
+    resultCanvas.width = WIDTH;
+    resultCanvas.height = HEIGHT;
 
-    overlay.height =
-        HEIGHT;
-
-    const overlayCtx =
-        overlay.getContext("2d");
+    const resultCtx =
+        resultCanvas.getContext("2d");
 
     const output =
-        overlayCtx.createImageData(
+        resultCtx.createImageData(
             WIDTH,
             HEIGHT
         );
@@ -212,31 +151,10 @@ function createDifferenceOverlay(
     ) {
 
         const difference =
-            Math.abs(
-                normal[i] -
-                pressed[i]
-            ) +
-
-            Math.abs(
-                normal[i + 1] -
-                pressed[i + 1]
-            ) +
-
-            Math.abs(
-                normal[i + 2] -
-                pressed[i + 2]
-            ) +
-
-            Math.abs(
-                normal[i + 3] -
-                pressed[i + 3]
-            );
-
-
-        /*
-           Same 40 threshold we tested
-           successfully with your X overlay.
-        */
+            Math.abs(normal[i] - pressed[i]) +
+            Math.abs(normal[i + 1] - pressed[i + 1]) +
+            Math.abs(normal[i + 2] - pressed[i + 2]) +
+            Math.abs(normal[i + 3] - pressed[i + 3]);
 
         if (difference >= 40) {
 
@@ -261,21 +179,226 @@ function createDifferenceOverlay(
         }
     }
 
-    overlayCtx.putImageData(
+    resultCtx.putImageData(
         output,
         0,
         0
     );
 
-    return overlay;
+    return resultCanvas;
 }
 
 
 /* =====================================================
-   PREPARE BUTTON OVERLAYS
+   FIND DIFFERENCE BOUNDS
 ===================================================== */
 
-async function prepareButtons() {
+function findBounds(
+    normalData,
+    pressedData
+) {
+
+    const normal =
+        normalData.data;
+
+    const pressed =
+        pressedData.data;
+
+    let minX = WIDTH;
+    let minY = HEIGHT;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (
+        let y = 0;
+        y < HEIGHT;
+        y++
+    ) {
+
+        for (
+            let x = 0;
+            x < WIDTH;
+            x++
+        ) {
+
+            const i =
+                (y * WIDTH + x) * 4;
+
+            const difference =
+                Math.abs(normal[i] - pressed[i]) +
+                Math.abs(normal[i + 1] - pressed[i + 1]) +
+                Math.abs(normal[i + 2] - pressed[i + 2]) +
+                Math.abs(normal[i + 3] - pressed[i + 3]);
+
+            if (difference >= 40) {
+
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    if (maxX < 0)
+        return null;
+
+    return {
+        x: minX,
+        y: minY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+    };
+}
+
+
+/* =====================================================
+   CREATE STICK IMAGE
+===================================================== */
+
+function createStick(
+    normalData,
+    pressedImage
+) {
+
+    const temp =
+        document.createElement("canvas");
+
+    temp.width = WIDTH;
+    temp.height = HEIGHT;
+
+    const tempCtx =
+        temp.getContext("2d");
+
+    tempCtx.drawImage(
+        pressedImage,
+        0,
+        0,
+        WIDTH,
+        HEIGHT
+    );
+
+    const pressedData =
+        tempCtx.getImageData(
+            0,
+            0,
+            WIDTH,
+            HEIGHT
+        );
+
+    const bounds =
+        findBounds(
+            normalData,
+            pressedData
+        );
+
+    if (!bounds)
+        return null;
+
+
+    /*
+       Extra padding keeps the complete
+       joystick visible.
+    */
+
+    const padding = 15;
+
+    const cropX =
+        Math.max(
+            0,
+            bounds.x - padding
+        );
+
+    const cropY =
+        Math.max(
+            0,
+            bounds.y - padding
+        );
+
+    const cropRight =
+        Math.min(
+            WIDTH,
+            bounds.x +
+            bounds.width +
+            padding
+        );
+
+    const cropBottom =
+        Math.min(
+            HEIGHT,
+            bounds.y +
+            bounds.height +
+            padding
+        );
+
+    const cropWidth =
+        cropRight - cropX;
+
+    const cropHeight =
+        cropBottom - cropY;
+
+
+    /*
+       Create transparent image.
+    */
+
+    const stickCanvas =
+        document.createElement("canvas");
+
+    stickCanvas.width =
+        cropWidth;
+
+    stickCanvas.height =
+        cropHeight;
+
+    const stickCtx =
+        stickCanvas.getContext("2d");
+
+
+    /*
+       Draw ONLY the pressed stick region.
+    */
+
+    stickCtx.drawImage(
+        pressedImage,
+        cropX,
+        cropY,
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        cropWidth,
+        cropHeight
+    );
+
+
+    return {
+        image: stickCanvas,
+
+        x: cropX,
+        y: cropY,
+
+        width: cropWidth,
+        height: cropHeight
+    };
+}
+
+
+/* =====================================================
+   PREPARE
+===================================================== */
+
+async function prepare() {
+
+    normalImage =
+        await loadImage(
+            "controller_normal.png"
+        );
+
+
+    /*
+       Get normal pixels.
+    */
 
     const normalCanvas =
         document.createElement("canvas");
@@ -306,11 +429,15 @@ async function prepareButtons() {
         );
 
 
+    /*
+       Prepare buttons.
+    */
+
     for (
         const name in files
     ) {
 
-        const pressedImage =
+        const pressed =
             await loadImage(
                 files[name]
             );
@@ -318,17 +445,14 @@ async function prepareButtons() {
         const temp =
             document.createElement("canvas");
 
-        temp.width =
-            WIDTH;
-
-        temp.height =
-            HEIGHT;
+        temp.width = WIDTH;
+        temp.height = HEIGHT;
 
         const tempCtx =
             temp.getContext("2d");
 
         tempCtx.drawImage(
-            pressedImage,
+            pressed,
             0,
             0,
             WIDTH,
@@ -344,85 +468,120 @@ async function prepareButtons() {
             );
 
         overlays[name] =
-            createDifferenceOverlay(
+            makeOverlay(
                 normalData,
                 pressedData
             );
     }
+
+
+    /*
+       Prepare actual sticks.
+    */
+
+    const leftPressed =
+        await loadImage(
+            "controller_LeftAnalog_pressed.png"
+        );
+
+    const rightPressed =
+        await loadImage(
+            "controller_RightAnalog_pressed.png"
+        );
+
+    leftStick =
+        createStick(
+            normalData,
+            leftPressed
+        );
+
+    rightStick =
+        createStick(
+            normalData,
+            rightPressed
+        );
+
+
+    console.log(
+        "LEFT STICK:",
+        leftStick
+    );
+
+    console.log(
+        "RIGHT STICK:",
+        rightStick
+    );
+
+
+    requestAnimationFrame(
+        update
+    );
 }
 
 
 /* =====================================================
-   DRAW MOVING ANALOG STICK
+   STICK DRAWING
 ===================================================== */
 
 function drawStick(
-    image,
-    baseX,
-    baseY,
-    axisX,
-    axisY
+    stick,
+    x,
+    y
 ) {
 
-    if (!image)
+    if (!stick)
         return;
 
 
     /*
-       Deadzone prevents tiny controller
-       drift from moving the visual stick.
+       Deadzone.
     */
 
-    const DEADZONE = 0.08;
-
-
     if (
-        Math.abs(axisX) <
+        Math.abs(x) <
         DEADZONE
     ) {
 
-        axisX = 0;
+        x = 0;
     }
 
-
     if (
-        Math.abs(axisY) <
+        Math.abs(y) <
         DEADZONE
     ) {
 
-        axisY = 0;
+        y = 0;
     }
 
 
     /*
-       Scale the stick after the deadzone.
+       Normalize.
     */
 
-    if (axisX !== 0) {
+    if (x !== 0) {
 
         const sign =
-            axisX < 0 ? -1 : 1;
+            x < 0 ? -1 : 1;
 
-        axisX =
+        x =
             sign *
             (
-                (Math.abs(axisX) -
+                (Math.abs(x) -
                     DEADZONE)
                 /
                 (1 - DEADZONE)
             );
     }
 
-
-    if (axisY !== 0) {
+    if (y !== 0) {
 
         const sign =
-            axisY < 0 ? -1 : 1;
+            y < 0 ? -1 : 1;
 
-        axisY =
+        y =
             sign *
             (
-                (Math.abs(axisY) -
+                (Math.abs(y) -
                     DEADZONE)
                 /
                 (1 - DEADZONE)
@@ -431,27 +590,63 @@ function drawStick(
 
 
     /*
-       Convert the Gamepad API values
-       into pixel movement.
+       Movement.
     */
 
     const moveX =
-        axisX * MAX_MOVE;
+        x * MAX_MOVE;
 
     const moveY =
-        axisY * MAX_MOVE;
+        y * MAX_MOVE;
 
 
     /*
-       Draw the joystick at its normal
-       position + the analog movement.
+       Draw stick at its original
+       location plus movement.
     */
 
     ctx.drawImage(
-        image,
-        baseX + moveX,
-        baseY + moveY
+        stick.image,
+        stick.x + moveX,
+        stick.y + moveY
     );
+}
+
+
+/* =====================================================
+   FIND CONTROLLER
+===================================================== */
+
+function getController() {
+
+    const pads =
+        navigator.getGamepads();
+
+    if (
+        gamepad &&
+        pads[gamepad.index]
+    ) {
+
+        gamepad =
+            pads[gamepad.index];
+
+        return gamepad;
+    }
+
+    for (
+        const pad of pads
+    ) {
+
+        if (pad) {
+
+            gamepad =
+                pad;
+
+            return pad;
+        }
+    }
+
+    return null;
 }
 
 
@@ -462,7 +657,7 @@ function drawStick(
 function update() {
 
     /*
-       Always start with the normal controller.
+       Draw normal controller.
     */
 
     ctx.clearRect(
@@ -481,54 +676,15 @@ function update() {
     );
 
 
-    /*
-       Find controller.
-    */
-
-    const pads =
-        navigator.getGamepads();
-
-    let pad =
-        gamepad;
-
-
-    if (
-        pad &&
-        pads[pad.index]
-    ) {
-
-        pad =
-            pads[pad.index];
-
-        gamepad =
-            pad;
-
-    } else {
-
-        for (
-            const p of pads
-        ) {
-
-            if (p) {
-
-                gamepad =
-                    p;
-
-                pad =
-                    p;
-
-                break;
-            }
-        }
-    }
+    const pad =
+        getController();
 
 
     if (pad) {
 
-
-        /* =============================================
-           BUTTONS
-        ============================================= */
+        /*
+           Buttons.
+        */
 
         for (
             const index in buttonMap
@@ -543,44 +699,39 @@ function update() {
             )
                 continue;
 
-            const name =
-                buttonMap[index];
-
             const overlay =
-                overlays[name];
+                overlays[
+                    buttonMap[index]
+                ];
 
-            if (!overlay)
-                continue;
+            if (overlay) {
 
-            ctx.drawImage(
-                overlay,
-                0,
-                0
-            );
+                ctx.drawImage(
+                    overlay,
+                    0,
+                    0
+                );
+            }
         }
 
 
-        /* =============================================
+        /*
            LEFT STICK
-        ============================================= */
+        */
 
         drawStick(
-            window.leftStickImage,
-            LEFT_STICK_X,
-            LEFT_STICK_Y,
+            leftStick,
             pad.axes[0] || 0,
             pad.axes[1] || 0
         );
 
 
-        /* =============================================
+        /*
            RIGHT STICK
-        ============================================= */
+        */
 
         drawStick(
-            window.rightStickImage,
-            RIGHT_STICK_X,
-            RIGHT_STICK_Y,
+            rightStick,
             pad.axes[2] || 0,
             pad.axes[3] || 0
         );
@@ -594,7 +745,7 @@ function update() {
 
 
 /* =====================================================
-   CONNECT / DISCONNECT
+   EVENTS
 ===================================================== */
 
 window.addEventListener(
@@ -605,7 +756,7 @@ window.addEventListener(
             event.gamepad;
 
         console.log(
-            "Gamepad connected:",
+            "CONNECTED:",
             gamepad.id
         );
     }
@@ -618,8 +769,8 @@ window.addEventListener(
 
         if (
             gamepad &&
-            event.gamepad.index ===
-            gamepad.index
+            gamepad.index ===
+            event.gamepad.index
         ) {
 
             gamepad = null;
@@ -632,57 +783,7 @@ window.addEventListener(
    START
 ===================================================== */
 
-async function start() {
-
-    try {
-
-        normalImage =
-            await loadImage(
-                "controller_normal.png"
-            );
-
-
-        /*
-           Load the actual joystick PNGs.
-        */
-
-        window.leftStickImage =
-            await loadImage(
-                "controller_LeftAnalog_pressed.png"
-            );
-
-        window.rightStickImage =
-            await loadImage(
-                "controller_RightAnalog_pressed.png"
-            );
-
-
-        /*
-           Prepare buttons.
-        */
-
-        await prepareButtons();
-
-
-        console.log(
-            "Controller ready."
-        );
-
-
-        requestAnimationFrame(
-            update
-        );
-
-    } catch (error) {
-
-        console.error(
-            error
-        );
-    }
-}
-
-
-start();
+prepare();
 
 </script>
 
