@@ -10,7 +10,7 @@ html, body {
     padding: 0;
     width: 100%;
     height: 100%;
-    background: #333;
+    background: transparent;
     overflow: hidden;
 }
 
@@ -45,46 +45,57 @@ const HEIGHT = 667;
 const MAX_MOVE = 50;
 const DEADZONE = 0.08;
 
-const files = {
+const canvas = document.getElementById("base");
+const ctx = canvas.getContext("2d");
+
+let normalImage;
+let gamepad = null;
+
+const overlays = {};
+
+
+/* =====================================================
+   BUTTON FILES
+===================================================== */
+
+const buttonFiles = {
     x: "controller_x_pressed.png",
     o: "controller_o_pressed.png",
     square: "controller_square_pressed.png",
     triangle: "controller_triangle_pressed.png",
+
     L1: "controller_L1_pressed.png",
     R1: "controller_R1_pressed.png",
+
     dpadup: "controller_dpadup_pressed.png",
     dpaddown: "controller_dpaddown_pressed.png",
     dpadleft: "controller_dpadleft_pressed.png",
     dpadright: "controller_dpadright_pressed.png",
+
     touchpad: "controller_touchpad_pressed.png"
 };
+
+
+/* =====================================================
+   BUTTON MAP
+===================================================== */
 
 const buttonMap = {
     0: "x",
     1: "o",
     2: "square",
     3: "triangle",
+
     4: "L1",
     5: "R1",
+
     12: "dpadup",
     13: "dpaddown",
     14: "dpadleft",
     15: "dpadright",
+
     9: "touchpad"
 };
-
-const canvas =
-    document.getElementById("base");
-
-const ctx =
-    canvas.getContext("2d");
-
-let normalImage = null;
-let overlays = {};
-let gamepad = null;
-
-let leftStick = null;
-let rightStick = null;
 
 
 /* =====================================================
@@ -101,9 +112,7 @@ function loadImage(src) {
 
         img.onerror = () =>
             reject(
-                new Error(
-                    "Could not load " + src
-                )
+                new Error("Failed to load " + src)
             );
 
         img.src = src;
@@ -112,102 +121,123 @@ function loadImage(src) {
 
 
 /* =====================================================
-   MAKE BUTTON OVERLAY
+   IMAGE DATA
 ===================================================== */
 
-function makeOverlay(
+function getImageData(img) {
+
+    const c = document.createElement("canvas");
+
+    c.width = WIDTH;
+    c.height = HEIGHT;
+
+    const cctx = c.getContext("2d");
+
+    cctx.drawImage(
+        img,
+        0,
+        0,
+        WIDTH,
+        HEIGHT
+    );
+
+    return cctx.getImageData(
+        0,
+        0,
+        WIDTH,
+        HEIGHT
+    );
+}
+
+
+/* =====================================================
+   BUTTON DIFFERENCE
+===================================================== */
+
+function makeButtonOverlay(
     normalData,
     pressedData
 ) {
 
-    const resultCanvas =
+    const c =
         document.createElement("canvas");
 
-    resultCanvas.width = WIDTH;
-    resultCanvas.height = HEIGHT;
+    c.width = WIDTH;
+    c.height = HEIGHT;
 
-    const resultCtx =
-        resultCanvas.getContext("2d");
+    const cctx =
+        c.getContext("2d");
 
     const output =
-        resultCtx.createImageData(
+        cctx.createImageData(
             WIDTH,
             HEIGHT
         );
 
-    const normal =
-        normalData.data;
-
-    const pressed =
-        pressedData.data;
-
-    const result =
-        output.data;
+    const n = normalData.data;
+    const p = pressedData.data;
+    const o = output.data;
 
     for (
         let i = 0;
-        i < normal.length;
+        i < n.length;
         i += 4
     ) {
 
         const difference =
-            Math.abs(normal[i] - pressed[i]) +
-            Math.abs(normal[i + 1] - pressed[i + 1]) +
-            Math.abs(normal[i + 2] - pressed[i + 2]) +
-            Math.abs(normal[i + 3] - pressed[i + 3]);
+            Math.abs(n[i] - p[i]) +
+            Math.abs(n[i + 1] - p[i + 1]) +
+            Math.abs(n[i + 2] - p[i + 2]) +
+            Math.abs(n[i + 3] - p[i + 3]);
 
         if (difference >= 40) {
 
-            result[i] =
-                pressed[i];
-
-            result[i + 1] =
-                pressed[i + 1];
-
-            result[i + 2] =
-                pressed[i + 2];
-
-            result[i + 3] =
-                pressed[i + 3];
+            o[i] = p[i];
+            o[i + 1] = p[i + 1];
+            o[i + 2] = p[i + 2];
+            o[i + 3] = p[i + 3];
 
         } else {
 
-            result[i] = 0;
-            result[i + 1] = 0;
-            result[i + 2] = 0;
-            result[i + 3] = 0;
+            o[i] = 0;
+            o[i + 1] = 0;
+            o[i + 2] = 0;
+            o[i + 3] = 0;
         }
     }
 
-    resultCtx.putImageData(
+    cctx.putImageData(
         output,
         0,
         0
     );
 
-    return resultCanvas;
+    return c;
 }
 
 
 /* =====================================================
-   FIND DIFFERENCE BOUNDS
+   CREATE STICK SPRITE
 ===================================================== */
 
-function findBounds(
+function makeStick(
     normalData,
     pressedData
 ) {
 
-    const normal =
-        normalData.data;
+    const n = normalData.data;
+    const p = pressedData.data;
 
-    const pressed =
-        pressedData.data;
+
+    /*
+       First find EVERY pixel that changed.
+    */
 
     let minX = WIDTH;
     let minY = HEIGHT;
     let maxX = -1;
     let maxY = -1;
+
 
     for (
         let y = 0;
@@ -225,204 +255,482 @@ function findBounds(
                 (y * WIDTH + x) * 4;
 
             const difference =
-                Math.abs(normal[i] - pressed[i]) +
-                Math.abs(normal[i + 1] - pressed[i + 1]) +
-                Math.abs(normal[i + 2] - pressed[i + 2]) +
-                Math.abs(normal[i + 3] - pressed[i + 3]);
+                Math.abs(n[i] - p[i]) +
+                Math.abs(n[i + 1] - p[i + 1]) +
+                Math.abs(n[i + 2] - p[i + 2]) +
+                Math.abs(n[i + 3] - p[i + 3]);
+
 
             if (difference >= 40) {
 
-                if (x < minX) minX = x;
-                if (y < minY) minY = y;
-                if (x > maxX) maxX = x;
-                if (y > maxY) maxY = y;
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
             }
         }
     }
 
-    if (maxX < 0)
+
+    if (maxX === -1) {
+
+        console.error(
+            "No joystick pixels detected."
+        );
+
         return null;
+    }
 
-    return {
-        x: minX,
-        y: minY,
-        width: maxX - minX + 1,
-        height: maxY - minY + 1
-    };
-}
-
-
-/* =====================================================
-   CREATE STICK IMAGE
-===================================================== */
-
-function createStick(normalData, pressedImage) {
-
-    const temp = document.createElement("canvas");
-
-    temp.width = WIDTH;
-    temp.height = HEIGHT;
-
-    const tempCtx = temp.getContext("2d");
-
-    tempCtx.drawImage(
-        pressedImage,
-        0,
-        0,
-        WIDTH,
-        HEIGHT
-    );
-
-    const pressedData = tempCtx.getImageData(
-        0,
-        0,
-        WIDTH,
-        HEIGHT
-    );
-
-    const normal = normalData.data;
-    const pressed = pressedData.data;
-
-    let minX = WIDTH;
-    let minY = HEIGHT;
-    let maxX = -1;
-    let maxY = -1;
 
     /*
-       Create a transparent image containing
-       ONLY the pixels that changed.
+       Create a transparent full-size canvas.
     */
 
-    const outputCanvas = document.createElement("canvas");
+    const sprite =
+        document.createElement("canvas");
 
-    outputCanvas.width = WIDTH;
-    outputCanvas.height = HEIGHT;
+    sprite.width = WIDTH;
+    sprite.height = HEIGHT;
 
-    const outputCtx = outputCanvas.getContext("2d");
+    const sctx =
+        sprite.getContext("2d");
 
-    const output = outputCtx.createImageData(
-        WIDTH,
-        HEIGHT
-    );
+    const output =
+        sctx.createImageData(
+            WIDTH,
+            HEIGHT
+        );
 
-    const result = output.data;
+    const o = output.data;
 
-    for (let i = 0; i < normal.length; i += 4) {
 
-        const difference =
-            Math.abs(normal[i] - pressed[i]) +
-            Math.abs(normal[i + 1] - pressed[i + 1]) +
-            Math.abs(normal[i + 2] - pressed[i + 2]) +
-            Math.abs(normal[i + 3] - pressed[i + 3]);
+    /*
+       Copy ONLY changed pixels.
+       Everything else remains transparent.
+    */
 
-        if (difference >= 40) {
+    for (
+        let y = minY;
+        y <= maxY;
+        y++
+    ) {
 
-            result[i] = pressed[i];
-            result[i + 1] = pressed[i + 1];
-            result[i + 2] = pressed[i + 2];
-            result[i + 3] = pressed[i + 3];
+        for (
+            let x = minX;
+            x <= maxX;
+            x++
+        ) {
 
-            const pixel = i / 4;
+            const i =
+                (y * WIDTH + x) * 4;
 
-            const x = pixel % WIDTH;
-            const y = Math.floor(pixel / WIDTH);
+            const difference =
+                Math.abs(n[i] - p[i]) +
+                Math.abs(n[i + 1] - p[i + 1]) +
+                Math.abs(n[i + 2] - p[i + 2]) +
+                Math.abs(n[i + 3] - p[i + 3]);
 
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
 
-        } else {
+            if (difference >= 40) {
 
-            result[i] = 0;
-            result[i + 1] = 0;
-            result[i + 2] = 0;
-            result[i + 3] = 0;
+                o[i] = p[i];
+                o[i + 1] = p[i + 1];
+                o[i + 2] = p[i + 2];
+                o[i + 3] = p[i + 3];
+            }
         }
     }
 
-    if (maxX < 0) {
-        console.log("Could not find stick.");
-        return null;
-    }
 
-    outputCtx.putImageData(
+    sctx.putImageData(
         output,
         0,
         0
     );
 
-    /*
-       Crop the transparent image down to the
-       actual changed area.
-    */
-
-    const padding = 5;
-
-    const cropX = Math.max(
-        0,
-        minX - padding
-    );
-
-    const cropY = Math.max(
-        0,
-        minY - padding
-    );
-
-    const cropRight = Math.min(
-        WIDTH,
-        maxX + padding + 1
-    );
-
-    const cropBottom = Math.min(
-        HEIGHT,
-        maxY + padding + 1
-    );
-
-    const cropWidth =
-        cropRight - cropX;
-
-    const cropHeight =
-        cropBottom - cropY;
-
-    const stickCanvas =
-        document.createElement("canvas");
-
-    stickCanvas.width =
-        cropWidth;
-
-    stickCanvas.height =
-        cropHeight;
-
-    const stickCtx =
-        stickCanvas.getContext("2d");
-
-    /*
-       This is the important part:
-       the surrounding square is transparent.
-    */
-
-    stickCtx.drawImage(
-        outputCanvas,
-
-        cropX,
-        cropY,
-        cropWidth,
-        cropHeight,
-
-        0,
-        0,
-        cropWidth,
-        cropHeight
-    );
 
     return {
-        image: stickCanvas,
+        image: sprite,
 
-        x: cropX,
-        y: cropY,
+        centerX:
+            (minX + maxX) / 2,
 
-        width: cropWidth,
-        height: cropHeight
+        centerY:
+            (minY + maxY) / 2
     };
 }
+
+
+/* =====================================================
+   PREPARE
+===================================================== */
+
+async function prepare() {
+
+    try {
+
+        normalImage =
+            await loadImage(
+                "controller_normal.png"
+            );
+
+
+        const normalData =
+            getImageData(
+                normalImage
+            );
+
+
+        /* BUTTONS */
+
+        for (
+            const name in buttonFiles
+        ) {
+
+            const pressed =
+                await loadImage(
+                    buttonFiles[name]
+                );
+
+            const pressedData =
+                getImageData(
+                    pressed
+                );
+
+            overlays[name] =
+                makeButtonOverlay(
+                    normalData,
+                    pressedData
+                );
+        }
+
+
+        /* LEFT STICK */
+
+        const leftImage =
+            await loadImage(
+                "controller_LeftAnalog_pressed.png"
+            );
+
+        const leftData =
+            getImageData(
+                leftImage
+            );
+
+        window.leftStick =
+            makeStick(
+                normalData,
+                leftData
+            );
+
+
+        /* RIGHT STICK */
+
+        const rightImage =
+            await loadImage(
+                "controller_RightAnalog_pressed.png"
+            );
+
+        const rightData =
+            getImageData(
+                rightImage
+            );
+
+        window.rightStick =
+            makeStick(
+                normalData,
+                rightData
+            );
+
+
+        console.log(
+            "LEFT STICK:",
+            window.leftStick
+        );
+
+        console.log(
+            "RIGHT STICK:",
+            window.rightStick
+        );
+
+        console.log(
+            "CONTROLLER READY"
+        );
+
+
+        requestAnimationFrame(
+            update
+        );
+
+    } catch (error) {
+
+        console.error(
+            "STARTUP ERROR:",
+            error
+        );
+    }
+}
+
+
+/* =====================================================
+   GAMEPAD
+===================================================== */
+
+function getGamepad() {
+
+    const pads =
+        navigator.getGamepads();
+
+
+    if (
+        gamepad &&
+        pads[gamepad.index]
+    ) {
+
+        gamepad =
+            pads[gamepad.index];
+
+        return gamepad;
+    }
+
+
+    for (
+        const pad of pads
+    ) {
+
+        if (pad) {
+
+            gamepad = pad;
+
+            return pad;
+        }
+    }
+
+
+    return null;
+}
+
+
+/* =====================================================
+   NORMALIZE AXIS
+===================================================== */
+
+function normalizeAxis(value) {
+
+    if (
+        Math.abs(value) <
+        DEADZONE
+    ) {
+
+        return 0;
+    }
+
+
+    const sign =
+        value < 0 ? -1 : 1;
+
+
+    const amount =
+        (
+            Math.abs(value) -
+            DEADZONE
+        ) /
+        (1 - DEADZONE);
+
+
+    return sign *
+        Math.min(
+            1,
+            amount
+        );
+}
+
+
+/* =====================================================
+   DRAW STICK
+===================================================== */
+
+function drawStick(
+    stick,
+    axisX,
+    axisY
+) {
+
+    if (!stick)
+        return;
+
+
+    axisX =
+        normalizeAxis(
+            axisX
+        );
+
+    axisY =
+        normalizeAxis(
+            axisY
+        );
+
+
+    const x =
+        axisX * MAX_MOVE;
+
+    const y =
+        axisY * MAX_MOVE;
+
+
+    /*
+       Because the sprite is full-size and
+       transparent everywhere except the stick,
+       moving this canvas moves ONLY the stick.
+    */
+
+    ctx.drawImage(
+        stick.image,
+        x,
+        y
+    );
+}
+
+
+/* =====================================================
+   UPDATE
+===================================================== */
+
+function update() {
+
+    /*
+       Normal controller.
+    */
+
+    ctx.clearRect(
+        0,
+        0,
+        WIDTH,
+        HEIGHT
+    );
+
+    ctx.drawImage(
+        normalImage,
+        0,
+        0,
+        WIDTH,
+        HEIGHT
+    );
+
+
+    const pad =
+        getGamepad();
+
+
+    if (pad) {
+
+
+        /*
+           BUTTONS
+        */
+
+        for (
+            const index in buttonMap
+        ) {
+
+            const button =
+                pad.buttons[index];
+
+            if (
+                !button ||
+                !button.pressed
+            )
+                continue;
+
+
+            const overlay =
+                overlays[
+                    buttonMap[index]
+                ];
+
+
+            if (overlay) {
+
+                ctx.drawImage(
+                    overlay,
+                    0,
+                    0
+                );
+            }
+        }
+
+
+        /*
+           LEFT STICK
+        */
+
+        drawStick(
+            window.leftStick,
+            pad.axes[0] || 0,
+            pad.axes[1] || 0
+        );
+
+
+        /*
+           RIGHT STICK
+        */
+
+        drawStick(
+            window.rightStick,
+            pad.axes[2] || 0,
+            pad.axes[3] || 0
+        );
+    }
+
+
+    requestAnimationFrame(
+        update
+    );
+}
+
+
+/* =====================================================
+   EVENTS
+===================================================== */
+
+window.addEventListener(
+    "gamepadconnected",
+    event => {
+
+        gamepad =
+            event.gamepad;
+
+        console.log(
+            "CONNECTED:",
+            gamepad.id
+        );
+    }
+);
+
+
+window.addEventListener(
+    "gamepaddisconnected",
+    event => {
+
+        if (
+            gamepad &&
+            event.gamepad.index ===
+            gamepad.index
+        ) {
+
+            gamepad = null;
+        }
+    }
+);
+
+
+/* =====================================================
+   START
+===================================================== */
+
+prepare();
+
+</script>
+
+</body>
+</html>
