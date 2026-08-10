@@ -15,15 +15,23 @@ html, body {
 }
 
 #controller {
+    position: relative;
     width: 1000px;
     height: 667px;
-    position: relative;
 }
 
-#controller img {
+.layer {
+    position: absolute;
+    left: 0;
+    top: 0;
     width: 1000px;
     height: 667px;
     display: block;
+    pointer-events: none;
+}
+
+.hidden {
+    display: none;
 }
 </style>
 </head>
@@ -31,156 +39,126 @@ html, body {
 <body>
 
 <div id="controller">
-    <img id="controllerImage" src="controller_normal.png">
+
+    <!-- Normal controller -->
+    <img
+        id="normal"
+        class="layer"
+        src="controller_normal.png"
+    >
+
+    <!-- Pressed layers -->
+    <img id="x" class="layer hidden" src="controller_x_pressed.png">
+    <img id="o" class="layer hidden" src="controller_o_pressed.png">
+    <img id="square" class="layer hidden" src="controller_square_pressed.png">
+    <img id="triangle" class="layer hidden" src="controller_triangle_pressed.png">
+
+    <img id="L1" class="layer hidden" src="controller_L1_pressed.png">
+    <img id="R1" class="layer hidden" src="controller_R1_pressed.png">
+
+    <img id="LeftAnalog" class="layer hidden" src="controller_LeftAnalog_pressed.png">
+    <img id="RightAnalog" class="layer hidden" src="controller_RightAnalog_pressed.png">
+
+    <img id="dpadup" class="layer hidden" src="controller_dpadup_pressed.png">
+    <img id="dpaddown" class="layer hidden" src="controller_dpaddown_pressed.png">
+    <img id="dpadleft" class="layer hidden" src="controller_dpadleft_pressed.png">
+    <img id="dpadright" class="layer hidden" src="controller_dpadright_pressed.png">
+
+    <img id="touchpad" class="layer hidden" src="controller_touchpad_pressed.png">
+
 </div>
 
 <script>
-const controllerImage = document.getElementById("controllerImage");
 
-const images = {
-    normal: "controller_normal.png",
+const buttons = {
+    0: "x",
+    1: "o",
+    2: "square",
+    3: "triangle",
 
-    x: "controller_x_pressed.png",
-    o: "controller_o_pressed.png",
-    square: "controller_square_pressed.png",
-    triangle: "controller_triangle_pressed.png",
+    4: "L1",
+    5: "R1",
 
-    L1: "controller_L1_pressed.png",
-    R1: "controller_R1_pressed.png",
+    10: "LeftAnalog",
+    11: "RightAnalog",
 
-    LeftAnalog: "controller_LeftAnalog_pressed.png",
-    RightAnalog: "controller_RightAnalog_pressed.png",
+    12: "dpadup",
+    13: "dpaddown",
+    14: "dpadleft",
+    15: "dpadright",
 
-    dpadup: "controller_dpadup_pressed.png",
-    dpaddown: "controller_dpaddown_pressed.png",
-    dpadleft: "controller_dpadleft_pressed.png",
-    dpadright: "controller_dpadright_pressed.png",
-
-    touchpad: "controller_touchpad_pressed.png"
+    9: "touchpad"
 };
 
-const loadedImages = {};
+const layers = {};
 
-for (const key in images) {
-    const img = new Image();
-    img.src = images[key];
-    loadedImages[key] = img;
+for (const key in buttons) {
+    layers[buttons[key]] = document.getElementById(buttons[key]);
 }
 
-let activeGamepad = null;
-
-window.addEventListener("gamepadconnected", function(event) {
-    activeGamepad = event.gamepad;
-    console.log("Controller connected:", activeGamepad.id);
-});
-
-window.addEventListener("gamepaddisconnected", function(event) {
-    if (activeGamepad && event.gamepad.index === activeGamepad.index) {
-        activeGamepad = null;
-        controllerImage.src = images.normal;
-    }
-});
+let gamepad = null;
 
 function findGamepad() {
+
     const gamepads = navigator.getGamepads();
 
-    if (activeGamepad) {
-        const current = gamepads[activeGamepad.index];
-
-        if (current) {
-            activeGamepad = current;
-            return current;
-        }
+    if (gamepad && gamepads[gamepad.index]) {
+        gamepad = gamepads[gamepad.index];
+        return gamepad;
     }
 
-    for (const gamepad of gamepads) {
-        if (gamepad) {
-            activeGamepad = gamepad;
-            return gamepad;
+    for (const g of gamepads) {
+        if (g) {
+            gamepad = g;
+            return g;
         }
     }
 
     return null;
 }
 
-function setImage(name) {
-    controllerImage.src = images[name];
-}
+function updateButtonLayers() {
 
-function updateController() {
-    const gamepad = findGamepad();
+    const pad = findGamepad();
 
-    if (!gamepad) {
-        setImage("normal");
-        requestAnimationFrame(updateController);
+    if (!pad) {
+        requestAnimationFrame(updateButtonLayers);
         return;
     }
 
-    let pressedImage = "normal";
+    for (const buttonIndex in buttons) {
 
-    /*
-       PS5 / DualSense standard button mapping:
+        const name = buttons[buttonIndex];
+        const layer = layers[name];
 
-       0 = X
-       1 = Circle
-       2 = Square
-       3 = Triangle
-       4 = L1
-       5 = R1
-       10 = L3
-       11 = R3
-       12 = D-pad Up
-       13 = D-pad Down
-       14 = D-pad Left
-       15 = D-pad Right
-    */
+        if (!layer) continue;
 
-    if (gamepad.buttons[0]?.pressed) {
-        pressedImage = "x";
-    }
-    else if (gamepad.buttons[1]?.pressed) {
-        pressedImage = "o";
-    }
-    else if (gamepad.buttons[2]?.pressed) {
-        pressedImage = "square";
-    }
-    else if (gamepad.buttons[3]?.pressed) {
-        pressedImage = "triangle";
-    }
-    else if (gamepad.buttons[4]?.pressed) {
-        pressedImage = "L1";
-    }
-    else if (gamepad.buttons[5]?.pressed) {
-        pressedImage = "R1";
-    }
-    else if (gamepad.buttons[10]?.pressed) {
-        pressedImage = "LeftAnalog";
-    }
-    else if (gamepad.buttons[11]?.pressed) {
-        pressedImage = "RightAnalog";
-    }
-    else if (gamepad.buttons[12]?.pressed) {
-        pressedImage = "dpadup";
-    }
-    else if (gamepad.buttons[13]?.pressed) {
-        pressedImage = "dpaddown";
-    }
-    else if (gamepad.buttons[14]?.pressed) {
-        pressedImage = "dpadleft";
-    }
-    else if (gamepad.buttons[15]?.pressed) {
-        pressedImage = "dpadright";
-    }
-    else if (gamepad.buttons[9]?.pressed) {
-        pressedImage = "touchpad";
+        const button = pad.buttons[buttonIndex];
+
+        if (button && button.pressed) {
+            layer.classList.remove("hidden");
+        } else {
+            layer.classList.add("hidden");
+        }
     }
 
-    setImage(pressedImage);
-
-    requestAnimationFrame(updateController);
+    requestAnimationFrame(updateButtonLayers);
 }
 
-updateController();
+window.addEventListener("gamepadconnected", event => {
+    gamepad = event.gamepad;
+});
+
+window.addEventListener("gamepaddisconnected", event => {
+
+    if (gamepad && event.gamepad.index === gamepad.index) {
+        gamepad = null;
+    }
+
+});
+
+updateButtonLayers();
+
 </script>
 
 </body>
